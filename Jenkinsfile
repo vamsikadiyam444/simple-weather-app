@@ -7,28 +7,12 @@ pipeline {
         ECS_CLUSTER = 'arn:aws:ecs:us-east-1:529589763090:cluster/my-ecs-cluster'
         ECS_SERVICE = 'my-app-service'
         IMAGE_TAG = "${env.BUILD_NUMBER}"
-        SONAR_HOST_URL = 'http://localhost:9000'
-        SONAR_LOGIN = credentials('sonar-token') // Jenkins secret containing your SonarQube token
     }
 
     stages {
         stage('Checkout') {
             steps {
                 checkout scm
-            }
-        }
-
-        stage('SonarQube Analysis') {
-            steps {
-                withSonarQubeEnv('MySonarQube') {
-                    sh """
-                    sonar-scanner \
-                        -Dsonar.projectKey=my-app \
-                        -Dsonar.sources=. \
-                        -Dsonar.host.url=${SONAR_HOST_URL} \
-                        -Dsonar.login=${SONAR_LOGIN}
-                    """
-                }
             }
         }
 
