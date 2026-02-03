@@ -3,15 +3,16 @@ pipeline {
 
     environment {
         AWS_REGION             = 'us-east-1'
-        AWS_ACCESS_KEY_ID      = credentials('Access Key ID')       // Your AWS access key in Jenkins
-        AWS_SECRET_ACCESS_KEY  = credentials('Secret Access Key')  // Your AWS secret key in Jenkins
+        AWS_ACCESS_KEY_ID      = credentials('Access Key ID')
+        AWS_SECRET_ACCESS_KEY  = credentials('Secret Access Key')
         ECR_REPO               = '529589763090.dkr.ecr.us-east-1.amazonaws.com/my-app-repo'
         ECS_CLUSTER            = 'arn:aws:ecs:us-east-1:529589763090:cluster/my-ecs-cluster'
         ECS_SERVICE            = 'my-app-service'
-        IMAGE_TAG              = "${env.BUILD_NUMBER}" // Unique tag per build
+        IMAGE_TAG              = "${env.BUILD_NUMBER}"
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -20,7 +21,7 @@ pipeline {
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t my-app:${IMAGE_TAG} ."
+                sh 'docker build -t my-app:${IMAGE_TAG} .'
             }
         }
 
@@ -37,7 +38,9 @@ pipeline {
             steps {
                 sh """
                     docker tag my-app:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+                    docker tag my-app:${IMAGE_TAG} ${ECR_REPO}:latest
                     docker push ${ECR_REPO}:${IMAGE_TAG}
+                    docker push ${ECR_REPO}:latest
                 """
             }
         }
@@ -45,7 +48,7 @@ pipeline {
         stage('Deploy to ECS') {
             steps {
                 sh """
-                    echo "Deploying ECS service ${ECS_SERVICE}..."
+                    echo "Deploying latest image to ECS..."
                     aws ecs update-service \
                         --cluster ${ECS_CLUSTER} \
                         --service ${ECS_SERVICE} \
