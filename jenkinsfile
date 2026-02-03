@@ -1,0 +1,74 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION = 'us-east-1'
+        ECR_REPO = 'weather-app'
+        IMAGE_TAG = "latest"
+        SONAR_HOST_URL = 'http://<jenkins-server-ip>:9000'  // Replace with your Jenkins EC2 IP
+        SONAR_TOKEN = '<your-sonar-token>'                  // Replace with the SonarQube token
+        ECS_CLUSTER = 'my-ecs-cluster'                     // Your ECS cluster name
+        ECS_SERVICE = 'weather-app-service'                // Your ECS service name
+    }
+
+    stages {
+
+        stage('Checkout Code') {
+            steps {
+                git branch: 'main', url: 'https://github.com/vamsikadiyam444/simple-weather-app.git'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                sh """
+                sonar-scanner \
+                -Dsonar.projectKey=jenkins \
+                -Dsonar.sources=src \
+                -Dsonar.host.url=$SONAR_HOST_URL \
+                -Dsonar.login=$SONAR_TOKEN
+                """
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                sh "docker build -t $ECR_REPO:$IMAGE_TAG ."
+            }
+        }
+
+        stage('Authenticate ECR') {
+            steps {
+                sh """
+                aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com
+                """
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+            steps {
+                sh """
+                docker tag $ECR_REPO:$IMAGE_TAG <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
+                docker push <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
+                """
+            }
+        }
+
+        stage('Deploy to ECS Fargate') {
+            steps {
+                sh """
+                aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --force-new-deployment --region $AWS_REGION
+                """
+            }
+        }
+    }
+
+    post {
+        success {
+            echo 'Pipeline completed successfully!'
+        }
+        failure {
+            echo 'Pipeline failed. Check the logs for details.'
+        }
+    }
+}
