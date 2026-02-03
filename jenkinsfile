@@ -3,44 +3,45 @@ pipeline {
 
     environment {
         AWS_REGION = 'us-east-1'
-        ECR_REPO = 'weather-app'
-        IMAGE_TAG = "latest"
-        SONAR_HOST_URL = 'http://<jenkins-server-ip>:9000'  // Replace with your Jenkins EC2 IP
-        SONAR_TOKEN = '<your-sonar-token>'                  // Replace with the SonarQube token
-        ECS_CLUSTER = 'my-ecs-cluster'                     // Your ECS cluster name
-        ECS_SERVICE = 'weather-app-service'                // Your ECS service name
+        ECR_REPO = '529589763090.dkr.ecr.us-east-1.amazonaws.com/my-app-repo'
+        ECS_CLUSTER = 'arn:aws:ecs:us-east-1:529589763090:cluster/my-ecs-cluster'
+        ECS_SERVICE = 'my-app-service'
+        IMAGE_TAG = "${env.BUILD_NUMBER}"
+        SONAR_HOST_URL = 'http://localhost:9000'
+        SONAR_LOGIN = credentials('sonar-token') // Jenkins secret containing your SonarQube token
     }
 
     stages {
-
-        stage('Checkout Code') {
+        stage('Checkout') {
             steps {
-                git branch: 'main', url: 'https://github.com/vamsikadiyam444/simple-weather-app.git'
+                checkout scm
             }
         }
 
         stage('SonarQube Analysis') {
             steps {
-                sh """
-                sonar-scanner \
-                -Dsonar.projectKey=jenkins \
-                -Dsonar.sources=src \
-                -Dsonar.host.url=$SONAR_HOST_URL \
-                -Dsonar.login=$SONAR_TOKEN
-                """
+                withSonarQubeEnv('MySonarQube') {
+                    sh """
+                    sonar-scanner \
+                        -Dsonar.projectKey=my-app \
+                        -Dsonar.sources=. \
+                        -Dsonar.host.url=${SONAR_HOST_URL} \
+                        -Dsonar.login=${SONAR_LOGIN}
+                    """
+                }
             }
         }
 
         stage('Build Docker Image') {
             steps {
-                sh "docker build -t $ECR_REPO:$IMAGE_TAG ."
+                sh 'docker build -t my-app:${IMAGE_TAG} .'
             }
         }
 
-        stage('Authenticate ECR') {
+        stage('Authenticate to ECR') {
             steps {
                 sh """
-                aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com
+                aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REPO}
                 """
             }
         }
@@ -48,16 +49,20 @@ pipeline {
         stage('Push Docker Image to ECR') {
             steps {
                 sh """
-                docker tag $ECR_REPO:$IMAGE_TAG <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
-                docker push <your-account-id>.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO:$IMAGE_TAG
+                docker tag my-app:${IMAGE_TAG} ${ECR_REPO}:${IMAGE_TAG}
+                docker push ${ECR_REPO}:${IMAGE_TAG}
                 """
             }
         }
 
-        stage('Deploy to ECS Fargate') {
+        stage('Deploy to ECS') {
             steps {
                 sh """
-                aws ecs update-service --cluster $ECS_CLUSTER --service $ECS_SERVICE --force-new-deployment --region $AWS_REGION
+                aws ecs update-service \
+                    --cluster ${ECS_CLUSTER} \
+                    --service ${ECS_SERVICE} \
+                    --force-new-deployment \
+                    --region ${AWS_REGION}
                 """
             }
         }
@@ -65,10 +70,10 @@ pipeline {
 
     post {
         success {
-            echo 'Pipeline completed successfully!'
+            echo "Deployment completed successfully!"
         }
         failure {
-            echo 'Pipeline failed. Check the logs for details.'
+            echo "Deployment failed!"
         }
     }
 }
